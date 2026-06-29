@@ -1,12 +1,14 @@
 import { NextRequest } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { ElectionStatus } from "@prisma/client"
+import { ElectionStatus, VoteMode } from "@prisma/client"
 
 export async function GET() {
   const elections = await prisma.election.findMany({
     include: {
-      candidates: true,
+      lists: {
+        include: { members: true },
+      },
       _count: { select: { votes: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -21,10 +23,10 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { title, description, startDate, endDate, candidates } = body
+  const { title, description, startDate, endDate, voteMode } = body
 
   if (!title || !startDate || !endDate) {
-    return Response.json({ error: "Missing required fields" }, { status: 400 })
+    return Response.json({ error: "Faltan campos obligatorios" }, { status: 400 })
   }
 
   const start = new Date(startDate)
@@ -42,16 +44,9 @@ export async function POST(request: NextRequest) {
       startDate: start,
       endDate: end,
       status,
-      candidates: {
-        create: (candidates ?? []).map((c: { name: string; discordTag?: string; description?: string; avatar?: string }) => ({
-          name: c.name,
-          discordTag: c.discordTag,
-          description: c.description,
-          avatar: c.avatar,
-        })),
-      },
+      voteMode: (voteMode as VoteMode) ?? "FULL_LIST",
     },
-    include: { candidates: true },
+    include: { lists: true },
   })
 
   return Response.json(election, { status: 201 })

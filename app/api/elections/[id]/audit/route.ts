@@ -13,14 +13,21 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const election = await prisma.election.findUnique({
     where: { id: electionId },
     include: {
-      candidates: true,
-      _count: { select: { votes: true } },
+      lists: {
+        include: {
+          members: {
+            include: { user: { select: { name: true, image: true } } },
+            orderBy: { position: "asc" },
+          },
+        },
+      },
     },
   })
   if (!election) return Response.json({ error: "Not found" }, { status: 404 })
 
-  const votes = await prisma.vote.findMany({
-    where: { electionId },
+  const voters = await prisma.vote.findMany({
+    where: { electionId, position: { in: [0, 1] } },
+    distinct: ["voterId"],
     include: {
       voter: {
         select: {
@@ -37,8 +44,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     orderBy: { votedAt: "asc" },
   })
 
-  type VoteRow = (typeof votes)[number]
-  const auditData = votes.map((v: VoteRow) => ({
+  type VoterRow = (typeof voters)[number]
+  const auditData = voters.map((v: VoterRow) => ({
     voterId: v.voter.id,
     username: v.voter.name ?? "Usuario",
     image: v.voter.image,
@@ -48,27 +55,34 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   let results = null
   if (election.resultsRevealed) {
-    const candidateVotes = await prisma.vote.groupBy({
-      by: ["candidateId"],
-      where: { electionId },
-      _count: { candidateId: true },
+    const listVotes = await prisma.vote.groupBy({
+      by: ["listId"],
+      where: { electionId, listId: { not: null } },
+      _count: { listId: true },
+    })
+    const memberVotes = await prisma.vote.groupBy({
+      by: ["memberId"],
+      where: { electionId, memberId: { not: null } },
+      _count: { memberId: true },
     })
 
-    type CvRow = (typeof candidateVotes)[number]
-    type CandidateRow = (typeof election.candidates)[number]
+    type LvRow = (typeof listVotes)[number]
+    type MvRow = (typeof memberVotes)[number]
 
-    results = election.candidates
-      .map((c: CandidateRow) => ({
-        ...c,
-        voteCount: candidateVotes.find((cv: CvRow) => cv.candidateId === c.id)?._count.candidateId ?? 0,
-      }))
-      .sort((a: { voteCount: number }, b: { voteCount: number }) => b.voteCount - a.voteCount)
+    results = election.lists.map((list) => ({
+      ...list,
+      listVoteCount: listVotes.find((lv: LvRow) => lv.listId === list.id)?._count.listId ?? 0,
+      members: list.members.map((m) => ({
+        ...m,
+        memberVoteCount: memberVotes.find((mv: MvRow) => mv.memberId === m.id)?._count.memberId ?? 0,
+      })),
+    }))
   }
 
   return Response.json({
     election,
     voters: auditData,
-    totalVotes: votes.length,
+    totalVotes: auditData.length,
     results,
   })
 }

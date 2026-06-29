@@ -13,25 +13,41 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const election = await prisma.election.update({
     where: { id: electionId },
     data: { resultsRevealed: true, status: "CLOSED" },
+    include: {
+      lists: {
+        include: {
+          members: {
+            include: { user: { select: { name: true, image: true } } },
+            orderBy: { position: "asc" },
+          },
+        },
+      },
+    },
   })
 
-  const candidateVotes = await prisma.vote.groupBy({
-    by: ["candidateId"],
-    where: { electionId },
-    _count: { candidateId: true },
+  const listVotes = await prisma.vote.groupBy({
+    by: ["listId"],
+    where: { electionId, listId: { not: null } },
+    _count: { listId: true },
   })
 
-  const candidates = await prisma.candidate.findMany({ where: { electionId } })
+  const memberVotes = await prisma.vote.groupBy({
+    by: ["memberId"],
+    where: { electionId, memberId: { not: null } },
+    _count: { memberId: true },
+  })
 
-  type CvRow = (typeof candidateVotes)[number]
-  type CandidateRow = (typeof candidates)[number]
+  type LvRow = (typeof listVotes)[number]
+  type MvRow = (typeof memberVotes)[number]
 
-  const results = candidates
-    .map((c: CandidateRow) => ({
-      ...c,
-      voteCount: candidateVotes.find((cv: CvRow) => cv.candidateId === c.id)?._count.candidateId ?? 0,
-    }))
-    .sort((a: { voteCount: number }, b: { voteCount: number }) => b.voteCount - a.voteCount)
+  const results = election.lists.map((list) => ({
+    ...list,
+    listVotes: listVotes.find((lv: LvRow) => lv.listId === list.id)?._count.listId ?? 0,
+    members: list.members.map((m) => ({
+      ...m,
+      memberVotes: memberVotes.find((mv: MvRow) => mv.memberId === m.id)?._count.memberId ?? 0,
+    })),
+  }))
 
   return Response.json({ election, results })
 }

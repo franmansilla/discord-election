@@ -6,35 +6,58 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const election = await prisma.election.findUnique({
     where: { id: electionId },
-    include: { candidates: true },
+    include: {
+      lists: {
+        include: {
+          members: {
+            include: { user: { select: { name: true, image: true } } },
+            orderBy: { position: "asc" },
+          },
+        },
+      },
+    },
   })
 
   if (!election) return Response.json({ error: "Not found" }, { status: 404 })
   if (!election.resultsRevealed) {
-    return Response.json({ error: "Results not yet revealed" }, { status: 403 })
+    return Response.json({ error: "Resultados no revelados aun" }, { status: 403 })
   }
 
-  const candidateVotes = await prisma.vote.groupBy({
-    by: ["candidateId"],
+  const totalVoters = await prisma.vote.groupBy({
+    by: ["voterId"],
     where: { electionId },
-    _count: { candidateId: true },
+  })
+  const totalVotes = totalVoters.length
+
+  const listVotes = await prisma.vote.groupBy({
+    by: ["listId"],
+    where: { electionId, listId: { not: null } },
+    _count: { listId: true },
   })
 
-  const totalVotes = await prisma.vote.count({ where: { electionId } })
+  const memberVotes = await prisma.vote.groupBy({
+    by: ["memberId"],
+    where: { electionId, memberId: { not: null } },
+    _count: { memberId: true },
+  })
 
-  type CvRow = (typeof candidateVotes)[number]
-  type CandidateRow = (typeof election.candidates)[number]
+  type LvRow = (typeof listVotes)[number]
+  type MvRow = (typeof memberVotes)[number]
 
-  const results = election.candidates
-    .map((c: CandidateRow) => {
-      const count = candidateVotes.find((cv: CvRow) => cv.candidateId === c.id)?._count.candidateId ?? 0
+  const results = election.lists
+    .map((list) => {
+      const lv = listVotes.find((v: LvRow) => v.listId === list.id)?._count.listId ?? 0
       return {
-        ...c,
-        voteCount: count,
-        percentage: totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0,
+        ...list,
+        listVoteCount: lv,
+        percentage: totalVotes > 0 ? Math.round((lv / totalVotes) * 100) : 0,
+        members: list.members.map((m) => ({
+          ...m,
+          memberVoteCount: memberVotes.find((v: MvRow) => v.memberId === m.id)?._count.memberId ?? 0,
+        })),
       }
     })
-    .sort((a: { voteCount: number }, b: { voteCount: number }) => b.voteCount - a.voteCount)
+    .sort((a, b) => b.listVoteCount - a.listVoteCount)
 
   return Response.json({ election, results, totalVotes })
 }

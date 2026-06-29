@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const election = await prisma.election.findUnique({
     where: { id },
     include: {
-      candidates: true,
+      lists: { include: { members: true } },
       _count: { select: { votes: true } },
     },
   })
@@ -46,7 +46,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ...(end && { endDate: end }),
       ...(computedStatus && { status: computedStatus }),
     },
-    include: { candidates: true },
+    include: { lists: { include: { members: true } } },
   })
 
   return Response.json(election)

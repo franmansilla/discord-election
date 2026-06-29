@@ -7,15 +7,16 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String       @id @default(cuid())
   name          String?
-  email         String?   @unique
+  email         String?      @unique
   emailVerified DateTime?
   image         String?
-  isAdmin       Boolean   @default(false)
+  isAdmin       Boolean      @default(false)
+  memberships   ListMember[]
   votes         Vote[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   accounts      Account[]
   sessions      Session[]
@@ -64,39 +65,68 @@ model Election {
   endDate         DateTime
   resultsRevealed Boolean        @default(false)
   status          ElectionStatus @default(DRAFT)
-  candidates      Candidate[]
+  voteMode        VoteMode       @default(FULL_LIST)
+  lists           CandidateList[]
   votes           Vote[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
 
-model Candidate {
-  id          String   @id @default(cuid())
-  electionId  String
-  election    Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
-  name        String
-  discordTag  String?
-  description String?
-  avatar      String?
-  votes       Vote[]
-  createdAt   DateTime @default(now())
+model CandidateList {
+  id         String       @id @default(cuid())
+  electionId String
+  election   Election     @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  name       String
+  status     ListStatus   @default(OPEN)
+  members    ListMember[]
+  votes      Vote[]
+  createdAt  DateTime     @default(now())
+}
+
+model ListMember {
+  id         String        @id @default(cuid())
+  listId     String
+  list       CandidateList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User          @relation(fields: [userId], references: [id])
+  position   Int
+  role       String?
+  proposal   String?
+  votes      Vote[]
+  createdAt  DateTime      @default(now())
+
+  @@unique([listId, position])
+  @@unique([listId, userId])
 }
 
 model Vote {
-  id          String    @id @default(cuid())
-  electionId  String
-  election    Election  @relation(fields: [electionId], references: [id])
-  voterId     String
-  voter       User      @relation(fields: [voterId], references: [id])
-  candidateId String
-  candidate   Candidate @relation(fields: [candidateId], references: [id])
-  votedAt     DateTime  @default(now())
+  id         String         @id @default(cuid())
+  electionId String
+  election   Election       @relation(fields: [electionId], references: [id])
+  voterId    String
+  voter      User           @relation(fields: [voterId], references: [id])
+  position   Int            @default(0)
+  listId     String?
+  list       CandidateList? @relation(fields: [listId], references: [id])
+  memberId   String?
+  member     ListMember?    @relation(fields: [memberId], references: [id])
+  votedAt    DateTime       @default(now())
 
-  @@unique([electionId, voterId])
+  @@unique([electionId, voterId, position])
 }
 
 enum ElectionStatus {
   DRAFT
   ACTIVE
   CLOSED
+}
+
+enum VoteMode {
+  FULL_LIST
+  SPLIT
+}
+
+enum ListStatus {
+  OPEN
+  COMPLETE
 }
