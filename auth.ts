@@ -18,23 +18,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.user.id = user.id
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
-        select: { isAdmin: true, discordId: true },
+        select: {
+          isAdmin: true,
+          accounts: {
+            where: { provider: "discord" },
+            select: { providerAccountId: true },
+          },
+        },
       })
       session.user.isAdmin = dbUser?.isAdmin ?? false
-      session.user.discordId = dbUser?.discordId ?? ""
+      session.user.discordId = dbUser?.accounts[0]?.providerAccountId ?? ""
       return session
     },
   },
   events: {
     async linkAccount({ user, account }) {
-      if (account.provider === "discord") {
+      if (account.provider === "discord" && adminIds.includes(account.providerAccountId)) {
         await prisma.user.update({
           where: { id: user.id },
-          data: {
-            discordId: account.providerAccountId,
-            username: user.name ?? "",
-            isAdmin: adminIds.includes(account.providerAccountId),
-          },
+          data: { isAdmin: true },
         })
       }
     },

@@ -25,9 +25,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       voter: {
         select: {
           id: true,
-          username: true,
-          avatar: true,
-          discordId: true,
+          name: true,
+          image: true,
+          accounts: {
+            where: { provider: "discord" },
+            select: { providerAccountId: true },
+          },
         },
       },
     },
@@ -37,9 +40,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   type VoteRow = (typeof votes)[number]
   const auditData = votes.map((v: VoteRow) => ({
     voterId: v.voter.id,
-    username: v.voter.username,
-    avatar: v.voter.avatar,
-    discordId: v.voter.discordId,
+    username: v.voter.name ?? "Usuario",
+    image: v.voter.image,
+    discordId: v.voter.accounts[0]?.providerAccountId ?? "",
     votedAt: v.votedAt,
   }))
 

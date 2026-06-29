@@ -12,9 +12,6 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  discordId     String?   @unique
-  username      String?
-  discriminator String?
   isAdmin       Boolean   @default(false)
   votes         Vote[]
   createdAt     DateTime  @default(now())
