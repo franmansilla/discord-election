@@ -26,14 +26,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
   events: {
-    async createUser({ user }) {
-      const account = await prisma.account.findFirst({
-        where: { userId: user.id, provider: "discord" },
-      })
-      if (account && adminIds.includes(account.providerAccountId)) {
+    async linkAccount({ user, account }) {
+      if (account.provider === "discord") {
         await prisma.user.update({
           where: { id: user.id },
-          data: { isAdmin: true },
+          data: {
+            discordId: account.providerAccountId,
+            username: user.name ?? "",
+            isAdmin: adminIds.includes(account.providerAccountId),
+          },
         })
       }
     },
