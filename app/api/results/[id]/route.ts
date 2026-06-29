@@ -22,15 +22,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const totalVotes = await prisma.vote.count({ where: { electionId } })
 
+  type CvRow = (typeof candidateVotes)[number]
+  type CandidateRow = (typeof election.candidates)[number]
+
   const results = election.candidates
-    .map((c) => ({
-      ...c,
-      voteCount: candidateVotes.find((cv) => cv.candidateId === c.id)?._count.candidateId ?? 0,
-      percentage: totalVotes > 0
-        ? Math.round(((candidateVotes.find((cv) => cv.candidateId === c.id)?._count.candidateId ?? 0) / totalVotes) * 100)
-        : 0,
-    }))
-    .sort((a, b) => b.voteCount - a.voteCount)
+    .map((c: CandidateRow) => {
+      const count = candidateVotes.find((cv: CvRow) => cv.candidateId === c.id)?._count.candidateId ?? 0
+      return {
+        ...c,
+        voteCount: count,
+        percentage: totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0,
+      }
+    })
+    .sort((a: { voteCount: number }, b: { voteCount: number }) => b.voteCount - a.voteCount)
 
   return Response.json({ election, results, totalVotes })
 }

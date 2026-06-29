@@ -34,7 +34,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     orderBy: { votedAt: "asc" },
   })
 
-  const auditData = votes.map((v) => ({
+  type VoteRow = (typeof votes)[number]
+  const auditData = votes.map((v: VoteRow) => ({
     voterId: v.voter.id,
     username: v.voter.username,
     avatar: v.voter.avatar,
@@ -50,10 +51,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       _count: { candidateId: true },
     })
 
-    results = election.candidates.map((c) => ({
-      ...c,
-      voteCount: candidateVotes.find((cv) => cv.candidateId === c.id)?._count.candidateId ?? 0,
-    })).sort((a, b) => b.voteCount - a.voteCount)
+    type CvRow = (typeof candidateVotes)[number]
+    type CandidateRow = (typeof election.candidates)[number]
+
+    results = election.candidates
+      .map((c: CandidateRow) => ({
+        ...c,
+        voteCount: candidateVotes.find((cv: CvRow) => cv.candidateId === c.id)?._count.candidateId ?? 0,
+      }))
+      .sort((a: { voteCount: number }, b: { voteCount: number }) => b.voteCount - a.voteCount)
   }
 
   return Response.json({

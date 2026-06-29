@@ -23,12 +23,15 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const candidates = await prisma.candidate.findMany({ where: { electionId } })
 
+  type CvRow = (typeof candidateVotes)[number]
+  type CandidateRow = (typeof candidates)[number]
+
   const results = candidates
-    .map((c) => ({
+    .map((c: CandidateRow) => ({
       ...c,
-      voteCount: candidateVotes.find((cv) => cv.candidateId === c.id)?._count.candidateId ?? 0,
+      voteCount: candidateVotes.find((cv: CvRow) => cv.candidateId === c.id)?._count.candidateId ?? 0,
     }))
-    .sort((a, b) => b.voteCount - a.voteCount)
+    .sort((a: { voteCount: number }, b: { voteCount: number }) => b.voteCount - a.voteCount)
 
   return Response.json({ election, results })
 }
