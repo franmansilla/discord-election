@@ -47,7 +47,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (status !== "authenticated") return
     fetch("/api/elections").then(r => r.json()).then(data => {
-      const list = Array.isArray(data) ? data : []
+      const list = (Array.isArray(data) ? data : []).map((e: Election) => ({ ...e, lists: e.lists ?? [] }))
       setElections(list)
       const revealMap: Record<string, boolean> = {}
       list.forEach((e: Election) => { revealMap[e.id] = e.resultsRevealed })
@@ -86,7 +86,7 @@ export default function AdminPage() {
 
   const totalVotes = elections.reduce((a, e) => a + (e._count?.votes ?? 0), 0)
   const activeCount = elections.filter(e => e.status === "ACTIVE").length
-  const totalCandidates = elections.reduce((a, e) => a + e.lists.reduce((b, l) => b + l.members.length, 0), 0)
+  const totalCandidates = elections.reduce((a, e) => a + (e.lists ?? []).reduce((b, l) => b + (l.members?.length ?? 0), 0), 0)
 
   const tabBtn = (active: boolean): React.CSSProperties => ({
     border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, fontSize: 14,
@@ -145,7 +145,7 @@ export default function AdminPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {elections.map(e => {
               const on = !!reveal[e.id]
-              const candidateCount = e.lists.reduce((a, l) => a + l.members.length, 0)
+              const candidateCount = (e.lists ?? []).reduce((a, l) => a + (l.members?.length ?? 0), 0)
               return (
                 <div key={e.id} style={{
                   background: "rgba(255,255,255,0.05)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)",

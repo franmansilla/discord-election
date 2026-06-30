@@ -37,12 +37,13 @@ export default function HomePage() {
 
   useEffect(() => {
     fetch("/api/elections").then(r => r.json()).then(d => {
-      setElections(Array.isArray(d) ? d : [])
+      const list = (Array.isArray(d) ? d : []).map((e: Election) => ({ ...e, lists: e.lists ?? [] }))
+      setElections(list)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
 
-  const candidateCount = (e: Election) => e.lists.reduce((acc, l) => acc + l.members.length, 0)
+  const candidateCount = (e: Election) => (e.lists ?? []).reduce((acc, l) => acc + (l.members?.length ?? 0), 0)
 
   const ctaLabel = (e: Election) => {
     if (e.status === "ACTIVE") return "Votar"
