@@ -115,19 +115,6 @@ export default function VotePage({ params }: { params: Promise<{ id: string }> }
   )
   if (!election) return <div style={{ textAlign: "center", padding: "80px 32px", color: "rgba(255,255,255,0.4)" }}>Elección no encontrada.</div>
 
-  if (status === "unauthenticated") return (
-    <div style={{ maxWidth: 480, margin: "80px auto", textAlign: "center", padding: "0 32px" }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 8 }}>Necesitas iniciar sesión</h2>
-      <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: 24 }}>Conecta tu cuenta de Discord para votar o postularte.</p>
-      <button onClick={() => signIn("discord")} style={{
-        background: "linear-gradient(135deg,#6366f1,#7c3aed)", border: "none", color: "#fff",
-        fontWeight: 600, fontSize: 15, padding: "12px 24px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
-        boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
-      }}>Iniciar sesión con Discord</button>
-    </div>
-  )
-
   if (hasVoted || voted) return (
     <div style={{ maxWidth: 480, margin: "80px auto", textAlign: "center", padding: "0 32px" }}>
       <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
@@ -187,7 +174,17 @@ export default function VotePage({ params }: { params: Promise<{ id: string }> }
       )}
 
       {/* VOTING UI */}
-      {canVote && (
+      {canVote && status === "unauthenticated" && (
+        <div style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 14, padding: "24px 20px", textAlign: "center" }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: "0 0 6px" }}>Iniciá sesión para votar</p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: "0 0 18px" }}>Necesitás conectar tu cuenta de Discord.</p>
+          <button onClick={() => signIn("discord")} style={{ background: "linear-gradient(135deg,#6366f1,#7c3aed)", border: "none", color: "#fff", fontWeight: 600, fontSize: 14, padding: "10px 22px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit" }}>
+            Iniciar sesión con Discord
+          </button>
+        </div>
+      )}
+
+      {canVote && status !== "unauthenticated" && (
         <>
           {election.voteMode === "FULL_LIST" ? (
             <div>
