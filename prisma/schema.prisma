@@ -89,10 +89,11 @@ model ListMember {
   list       CandidateList @relation(fields: [listId], references: [id], onDelete: Cascade)
   userId     String
   user       User          @relation(fields: [userId], references: [id])
-  position   Int
-  role       String?
-  proposal   String?
-  votes      Vote[]
+  position       Int
+  role           String?
+  proposal       String?
+  campaignImage  String?
+  votes          Vote[]
   createdAt  DateTime      @default(now())
 
   @@unique([listId, position])

@@ -12,6 +12,7 @@ type Member = {
   position: number
   role: string | null
   proposal: string | null
+  campaignImage: string | null
   user: { name: string | null; image: string | null }
 }
 
@@ -218,11 +219,16 @@ export default function VotePage({ params }: { params: Promise<{ id: string }> }
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                         {list.members.map((m, mi) => (
-                          <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: 12 }}>
-                            <AvatarEl image={m.user.image} name={m.user.name} size={42} gradient={AVATAR_GRADIENTS[mi]} />
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user.name}</div>
-                              {m.role && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{m.role}</div>}
+                          <div key={m.id} style={{ borderRadius: 12, overflow: "hidden", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                            {m.campaignImage && (
+                              <img src={m.campaignImage} alt="" style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
+                            )}
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 12 }}>
+                              <AvatarEl image={m.user.image} name={m.user.name} size={38} gradient={AVATAR_GRADIENTS[mi]} />
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user.name}</div>
+                                {m.role && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{m.role}</div>}
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -343,11 +349,16 @@ function ListCard({ list, colorIndex, electionId, showJoin }: { list: CandidateL
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         {list.members.map((m, mi) => (
-          <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "10px 12px" }}>
-            <AvatarEl image={m.user.image} name={m.user.name} size={36} gradient={AVATAR_GRADIENTS[mi]} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user.name}</div>
-              {m.role && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>{m.role}</div>}
+          <div key={m.id} style={{ borderRadius: 10, overflow: "hidden", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            {m.campaignImage && (
+              <img src={m.campaignImage} alt="" style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+              <AvatarEl image={m.user.image} name={m.user.name} size={34} gradient={AVATAR_GRADIENTS[mi]} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user.name}</div>
+                {m.role && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>{m.role}</div>}
+              </div>
             </div>
           </div>
         ))}

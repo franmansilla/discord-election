@@ -26,7 +26,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const { id: electionId } = await params
-  const { listName, role, proposal } = await request.json()
+  const { listName, role, proposal, campaignImage } = await request.json()
 
   if (!listName?.trim()) {
     return Response.json({ error: "El nombre de la lista es obligatorio" }, { status: 400 })
@@ -56,6 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           position: 1,
           role: role?.trim() || null,
           proposal: proposal?.trim() || null,
+          campaignImage: campaignImage || null,
         },
       },
     },

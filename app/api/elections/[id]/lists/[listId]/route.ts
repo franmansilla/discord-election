@@ -12,7 +12,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const { id: electionId, listId } = await params
-  const { role, proposal } = await request.json()
+  const { role, proposal, campaignImage } = await request.json()
 
   const list = await prisma.candidateList.findUnique({
     where: { id: listId, electionId },
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         position: 2,
         role: role?.trim() || null,
         proposal: proposal?.trim() || null,
+        campaignImage: campaignImage || null,
       },
     }),
     prisma.candidateList.update({
