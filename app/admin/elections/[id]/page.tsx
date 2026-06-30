@@ -4,26 +4,21 @@ import { useSession } from "next-auth/react"
 import { useEffect, useState, use } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  ArrowLeft, Play, Square, Eye, Trash2, Users, Vote,
-  AlertCircle, CheckCircle2, UserPlus, Trophy
-} from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
-type Candidate = {
+type Member = {
+  id: string
+  position: number
+  role: string | null
+  user: { name: string | null; image: string | null }
+}
+
+type CandidateList = {
   id: string
   name: string
-  discordTag: string | null
-  description: string | null
-  avatar: string | null
+  status: "OPEN" | "COMPLETE"
+  members: Member[]
 }
 
 type Election = {
@@ -33,9 +28,34 @@ type Election = {
   startDate: string
   endDate: string
   status: "DRAFT" | "ACTIVE" | "CLOSED"
+  voteMode: "FULL_LIST" | "SPLIT"
   resultsRevealed: boolean
-  candidates: Candidate[]
+  lists: CandidateList[]
   _count: { votes: number }
+}
+
+const statusStyle: Record<string, React.CSSProperties> = {
+  DRAFT:  { padding: "4px 11px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "rgba(251,191,36,0.15)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.3)" },
+  ACTIVE: { padding: "4px 11px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "rgba(52,211,153,0.15)", color: "#6ee7b7", border: "1px solid rgba(52,211,153,0.3)" },
+  CLOSED: { padding: "4px 11px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.15)" },
+}
+
+const DOT_COLORS = ["#34d399","#60a5fa","#f87171","#a78bfa","#fb923c","#22d3ee"]
+const AVATAR_GRADIENTS = [
+  "linear-gradient(135deg,#34d399,#059669)",
+  "linear-gradient(135deg,#60a5fa,#2563eb)",
+  "linear-gradient(135deg,#f87171,#dc2626)",
+  "linear-gradient(135deg,#a78bfa,#7c3aed)",
+]
+
+function AvatarEl({ image, name, size = 34 }: { image: string | null; name: string | null; size?: number }) {
+  const initials = name ? name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2) : "?"
+  if (image) return <img src={image} alt={name ?? ""} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: Math.round(size * 0.38), color: "#fff" }}>
+      {initials}
+    </div>
+  )
 }
 
 export default function ManageElectionPage({ params }: { params: Promise<{ id: string }> }) {
@@ -45,10 +65,7 @@ export default function ManageElectionPage({ params }: { params: Promise<{ id: s
 
   const [election, setElection] = useState<Election | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-  const [newCandidate, setNewCandidate] = useState({ name: "", discordTag: "", description: "" })
-  const [addingCandidate, setAddingCandidate] = useState(false)
+  const [notice, setNotice] = useState<{ msg: string; ok: boolean } | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
 
   useEffect(() => {
@@ -60,305 +77,185 @@ export default function ManageElectionPage({ params }: { params: Promise<{ id: s
     if (status !== "authenticated") return
     fetch(`/api/elections/${id}`)
       .then(r => r.json())
-      .then(data => { setElection(data); setLoading(false) })
+      .then(data => {
+        setElection({ ...data, lists: data.lists ?? [] })
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [id, status])
 
-  function notify(msg: string, isError = false) {
-    if (isError) { setError(msg); setSuccess(null) }
-    else { setSuccess(msg); setError(null) }
-    setTimeout(() => { setError(null); setSuccess(null) }, 4000)
+  function notify(msg: string, ok = true) {
+    setNotice({ msg, ok })
+    setTimeout(() => setNotice(null), 4000)
   }
 
   async function changeStatus(newStatus: "DRAFT" | "ACTIVE" | "CLOSED") {
     setActionLoading(true)
-    const res = await fetch(`/api/elections/${id}/status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    })
-    const data = await res.json()
+    const res = await fetch(`/api/elections/${id}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: newStatus }) })
     if (res.ok) { setElection(prev => prev ? { ...prev, status: newStatus } : prev); notify("Estado actualizado") }
-    else notify(data.error ?? "Error", true)
+    else { const d = await res.json(); notify(d.error ?? "Error", false) }
     setActionLoading(false)
   }
 
   async function revealResults() {
-    if (!confirm("¿Revelar los resultados? Esta accion no se puede deshacer.")) return
+    if (!confirm("¿Revelar los resultados?")) return
     setActionLoading(true)
     const res = await fetch(`/api/elections/${id}/reveal`, { method: "POST" })
-    const data = await res.json()
-    if (res.ok) {
-      setElection(prev => prev ? { ...prev, resultsRevealed: true, status: "CLOSED" } : prev)
-      notify("Resultados revelados correctamente")
-    } else notify(data.error ?? "Error", true)
+    if (res.ok) { setElection(prev => prev ? { ...prev, resultsRevealed: true, status: "CLOSED" } : prev); notify("Resultados revelados") }
+    else { const d = await res.json(); notify(d.error ?? "Error", false) }
     setActionLoading(false)
   }
 
   async function deleteElection() {
-    if (!confirm("¿Eliminar esta eleccion? Esto eliminara todos los votos.")) return
+    if (!confirm("¿Eliminar esta elección? Se perderán todos los votos.")) return
     await fetch(`/api/elections/${id}`, { method: "DELETE" })
     router.push("/admin")
   }
 
-  async function addCandidate() {
-    if (!newCandidate.name.trim()) return
-    setActionLoading(true)
-    const res = await fetch(`/api/elections/${id}/candidates`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newCandidate),
-    })
-    const data = await res.json()
-    if (res.ok) {
-      setElection(prev => prev ? { ...prev, candidates: [...prev.candidates, data] } : prev)
-      setNewCandidate({ name: "", discordTag: "", description: "" })
-      setAddingCandidate(false)
-      notify("Candidato agregado")
-    } else notify(data.error ?? "Error", true)
-    setActionLoading(false)
-  }
-
-  async function removeCandidate(candidateId: string) {
-    if (!confirm("¿Eliminar este candidato?")) return
-    const res = await fetch(`/api/elections/${id}/candidates`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ candidateId }),
-    })
-    if (res.ok) {
-      setElection(prev => prev ? { ...prev, candidates: prev.candidates.filter(c => c.id !== candidateId) } : prev)
-      notify("Candidato eliminado")
-    }
+  async function deleteList(listId: string) {
+    if (!confirm("¿Eliminar esta lista?")) return
+    const res = await fetch(`/api/elections/${id}/lists/${listId}`, { method: "PUT" })
+    if (res.ok) { setElection(prev => prev ? { ...prev, lists: prev.lists.filter(l => l.id !== listId) } : prev); notify("Lista eliminada") }
+    else { const d = await res.json(); notify(d.error ?? "Error", false) }
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+      <div style={{ width: 32, height: 32, border: "2px solid rgba(99,102,241,0.4)", borderTop: "2px solid #6366f1", borderRadius: "50%" }} />
     </div>
   )
 
-  if (!election) return (
-    <div className="max-w-2xl mx-auto px-4 py-16 text-center text-white/60">Eleccion no encontrada</div>
-  )
+  if (!election) return <div style={{ textAlign: "center", padding: "80px 32px", color: "rgba(255,255,255,0.4)" }}>Elección no encontrada.</div>
 
-  const statusCfg = {
-    DRAFT: { label: "Borrador", cls: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
-    ACTIVE: { label: "Activa", cls: "bg-green-500/20 text-green-300 border-green-500/30" },
-    CLOSED: { label: "Cerrada", cls: "bg-gray-500/20 text-gray-300 border-gray-500/30" },
-  }
+  const totalCandidates = (election.lists ?? []).reduce((a, l) => a + (l.members?.length ?? 0), 0)
+  const completeLists = (election.lists ?? []).filter(l => l.status === "COMPLETE")
+  const openLists = (election.lists ?? []).filter(l => l.status === "OPEN")
+
+  const btnBase: React.CSSProperties = { border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, fontSize: 13, padding: "9px 16px", borderRadius: 10, transition: "all .15s", display: "inline-flex", alignItems: "center", gap: 6 }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12">
-      <div className="flex items-center gap-3 mb-8">
-        <Link href="/admin">
-          <Button variant="ghost" size="sm" className="text-white/60 hover:text-white hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            Admin
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold text-white truncate">{election.title}</h1>
-        </div>
-        <Badge variant="outline" className={statusCfg[election.status].cls}>
-          {statusCfg[election.status].label}
-        </Badge>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "48px 32px 80px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+        <button onClick={() => router.push("/admin")} style={{ ...btnBase, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>← Admin</button>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: "#fff", margin: 0, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{election.title}</h1>
+        <span style={statusStyle[election.status]}>{election.status}</span>
       </div>
 
-      {error && (
-        <Alert className="mb-4 bg-red-500/10 border-red-500/30 text-red-300">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {success && (
-        <Alert className="mb-4 bg-green-500/10 border-green-500/30 text-green-300">
-          <CheckCircle2 className="h-4 w-4" />
-          <AlertDescription>{success}</AlertDescription>
-        </Alert>
+      {/* Notice */}
+      {notice && (
+        <div style={{ background: notice.ok ? "rgba(52,211,153,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${notice.ok ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`, borderRadius: 12, padding: "12px 16px", color: notice.ok ? "#6ee7b7" : "#fca5a5", fontSize: 14, marginBottom: 20 }}>
+          {notice.msg}
+        </div>
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 24 }}>
         {[
-          { label: "Candidatos", value: election.candidates.length, icon: Users },
-          { label: "Votos", value: election._count.votes, icon: Vote },
-          { label: "Resultados", value: election.resultsRevealed ? "Revelados" : "Ocultos", icon: Eye },
-        ].map(({ label, value, icon: Icon }) => (
-          <div key={label} className="rounded-lg bg-white/5 border border-white/10 p-3 text-center">
-            <Icon className="w-5 h-5 text-indigo-400 mx-auto mb-1" />
-            <p className="text-xs text-white/40">{label}</p>
-            <p className="font-bold text-white">{value}</p>
+          { label: "Listas", value: (election.lists ?? []).length },
+          { label: "Candidatos", value: totalCandidates },
+          { label: "Votos", value: election._count?.votes ?? 0 },
+        ].map(s => (
+          <div key={s.label} style={{ background: "rgba(255,255,255,0.05)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "16px 20px" }}>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 6 }}>{s.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Dates */}
-      <Card className="bg-white/5 border-white/10 mb-6">
-        <CardContent className="pt-4 grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <p className="text-white/40 text-xs mb-1">Inicio</p>
-            <p className="text-white">{format(new Date(election.startDate), "dd MMM yyyy HH:mm", { locale: es })}</p>
-          </div>
-          <div>
-            <p className="text-white/40 text-xs mb-1">Cierre</p>
-            <p className="text-white">{format(new Date(election.endDate), "dd MMM yyyy HH:mm", { locale: es })}</p>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Dates & mode */}
+      <div style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "16px 20px", marginBottom: 24, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>Inicio</div>
+          <div style={{ fontSize: 13, color: "#fff" }}>{format(new Date(election.startDate), "dd MMM yyyy HH:mm", { locale: es })}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>Cierre</div>
+          <div style={{ fontSize: 13, color: "#fff" }}>{format(new Date(election.endDate), "dd MMM yyyy HH:mm", { locale: es })}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>Modo de voto</div>
+          <div style={{ fontSize: 13, color: "#a5b4fc" }}>{election.voteMode === "FULL_LIST" ? "Lista completa" : "Voto dividido"}</div>
+        </div>
+      </div>
 
       {/* Actions */}
-      <Card className="bg-white/5 border-white/10 mb-6">
-        <CardHeader>
-          <CardTitle className="text-white text-base">Acciones</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
+      <div style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "16px 20px", marginBottom: 24 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.06em" }}>Acciones</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           {election.status === "DRAFT" && (
-            <Button
-              onClick={() => changeStatus("ACTIVE")}
-              disabled={actionLoading}
-              className="bg-green-600 hover:bg-green-500 text-white gap-2"
-            >
-              <Play className="w-4 h-4" />
-              Activar eleccion
-            </Button>
+            <button onClick={() => changeStatus("ACTIVE")} disabled={actionLoading} style={{ ...btnBase, background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#fff", boxShadow: "0 6px 18px rgba(34,197,94,0.3)" }}>▶ Activar elección</button>
           )}
           {election.status === "ACTIVE" && (
-            <Button
-              onClick={() => changeStatus("CLOSED")}
-              disabled={actionLoading}
-              variant="outline"
-              className="border-orange-500/50 text-orange-300 hover:bg-orange-500/10 gap-2"
-            >
-              <Square className="w-4 h-4" />
-              Cerrar votacion
-            </Button>
+            <button onClick={() => changeStatus("CLOSED")} disabled={actionLoading} style={{ ...btnBase, background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.4)", color: "#fb923c" }}>■ Cerrar votación</button>
           )}
-          {(election.status === "CLOSED" || election.status === "ACTIVE") && !election.resultsRevealed && (
-            <Button
-              onClick={revealResults}
-              disabled={actionLoading}
-              className="bg-yellow-600 hover:bg-yellow-500 text-white gap-2"
-            >
-              <Trophy className="w-4 h-4" />
-              Revelar resultados
-            </Button>
+          {!election.resultsRevealed && election.status !== "DRAFT" && (
+            <button onClick={revealResults} disabled={actionLoading} style={{ ...btnBase, background: "linear-gradient(135deg,#fbbf24,#f59e0b)", color: "#3a2c00", boxShadow: "0 6px 18px rgba(251,191,36,0.3)" }}>🏆 Revelar resultados</button>
           )}
           {election.resultsRevealed && (
-            <Link href={`/results/${election.id}`}>
-              <Button variant="outline" className="border-white/20 text-white hover:bg-white/10 gap-2">
-                <Eye className="w-4 h-4" />
-                Ver resultados
-              </Button>
-            </Link>
+            <Link href={`/results/${election.id}`} style={{ ...btnBase, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", textDecoration: "none" }}>👁 Ver resultados</Link>
           )}
-          <Link href={`/admin/elections/${election.id}/audit`}>
-            <Button variant="outline" className="border-indigo-500/50 text-indigo-300 hover:bg-indigo-500/10 gap-2">
-              <Users className="w-4 h-4" />
-              Panel de auditoria
-            </Button>
-          </Link>
-          {election.status === "ACTIVE" && (
-            <Link href={`/vote/${election.id}`} target="_blank">
-              <Button variant="ghost" className="text-white/60 hover:text-white hover:bg-white/10 gap-2">
-                <Vote className="w-4 h-4" />
-                Ver pagina de voto
-              </Button>
-            </Link>
-          )}
-          <Button
-            onClick={deleteElection}
-            variant="ghost"
-            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 gap-2 ml-auto"
-          >
-            <Trash2 className="w-4 h-4" />
-            Eliminar
-          </Button>
-        </CardContent>
-      </Card>
+          <Link href={`/vote/${election.id}`} target="_blank" style={{ ...btnBase, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc", textDecoration: "none" }}>🗳 Ver página de voto</Link>
+          <button onClick={deleteElection} style={{ ...btnBase, background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", marginLeft: "auto" }}>🗑 Eliminar</button>
+        </div>
+      </div>
 
-      {/* Candidates */}
-      <Card className="bg-white/5 border-white/10">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-white text-base">Candidatos ({election.candidates.length})</CardTitle>
-          {election.status === "DRAFT" && (
-            <Button
-              onClick={() => setAddingCandidate(!addingCandidate)}
-              variant="ghost"
-              size="sm"
-              className="text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10"
-            >
-              <UserPlus className="w-4 h-4 mr-1" />
-              Agregar
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {addingCandidate && (
-            <div className="rounded-lg bg-indigo-500/10 border border-indigo-500/30 p-4 space-y-3">
-              <p className="text-indigo-300 text-sm font-medium">Nuevo candidato</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-white/50 text-xs">Nombre *</Label>
-                  <Input
-                    value={newCandidate.name}
-                    onChange={e => setNewCandidate(p => ({ ...p, name: e.target.value }))}
-                    placeholder="Nombre"
-                    className="mt-1 bg-white/10 border-white/20 text-white placeholder:text-white/30 h-9 text-sm"
-                  />
+      {/* Lists */}
+      <div style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>Listas de candidatos ({(election.lists ?? []).length})</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Los candidatos se inscriben desde la página de voto</div>
+        </div>
+
+        {(election.lists ?? []).length === 0 ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "rgba(255,255,255,0.3)" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+            <p>No hay listas inscriptas aún.</p>
+          </div>
+        ) : (
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+            {(election.lists ?? []).map((list, li) => {
+              const dotColor = DOT_COLORS[li % DOT_COLORS.length]
+              return (
+                <div key={list.id} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: dotColor, boxShadow: `0 0 8px ${dotColor}` }} />
+                      <span style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{list.name}</span>
+                      <span style={{
+                        padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 600,
+                        background: list.status === "COMPLETE" ? "rgba(52,211,153,0.15)" : "rgba(251,191,36,0.15)",
+                        color: list.status === "COMPLETE" ? "#6ee7b7" : "#fcd34d",
+                        border: list.status === "COMPLETE" ? "1px solid rgba(52,211,153,0.3)" : "1px solid rgba(251,191,36,0.3)",
+                      }}>{list.status === "COMPLETE" ? "Completa" : "Abierta"}</span>
+                    </div>
+                    <button onClick={() => deleteList(list.id)} style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.25)", color: "#f87171", fontSize: 12, padding: "5px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit" }}>
+                      Eliminar
+                    </button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {(list.members ?? []).map((m, mi) => (
+                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 12px" }}>
+                        <AvatarEl image={m.user?.image ?? null} name={m.user?.name ?? null} size={34} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user?.name ?? "—"}</div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Posición {m.position}{m.role ? ` · ${m.role}` : ""}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {list.status === "OPEN" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: 10, padding: "10px 12px" }}>
+                        <div style={{ width: 34, height: 34, borderRadius: "50%", border: "2px dashed rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "rgba(255,255,255,0.3)", fontSize: 18 }}>+</div>
+                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Vacante</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-white/50 text-xs">Discord tag</Label>
-                  <Input
-                    value={newCandidate.discordTag}
-                    onChange={e => setNewCandidate(p => ({ ...p, discordTag: e.target.value }))}
-                    placeholder="usuario#1234"
-                    className="mt-1 bg-white/10 border-white/20 text-white placeholder:text-white/30 h-9 text-sm"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={addCandidate} disabled={actionLoading || !newCandidate.name.trim()} size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white">
-                  Agregar
-                </Button>
-                <Button onClick={() => setAddingCandidate(false)} variant="ghost" size="sm" className="text-white/60 hover:text-white">
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {election.candidates.map((c) => (
-            <div key={c.id} className="flex items-center gap-3 rounded-lg bg-white/5 border border-white/10 p-3">
-              <Avatar className="h-9 w-9 shrink-0">
-                <AvatarImage src={c.avatar ?? undefined} />
-                <AvatarFallback className="bg-indigo-700 text-white text-sm">
-                  {c.name[0]?.toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-medium truncate">{c.name}</p>
-                {c.discordTag && <p className="text-white/40 text-xs">{c.discordTag}</p>}
-                {c.description && <p className="text-white/50 text-xs mt-0.5 truncate">{c.description}</p>}
-              </div>
-              {election.status === "DRAFT" && (
-                <Button
-                  onClick={() => removeCandidate(c.id)}
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8 w-8 p-0 shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              )}
-            </div>
-          ))}
-
-          {election.candidates.length === 0 && (
-            <p className="text-center text-white/30 text-sm py-6">No hay candidatos aun</p>
-          )}
-        </CardContent>
-      </Card>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
