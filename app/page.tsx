@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useSession, signIn } from "next-auth/react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -19,11 +20,11 @@ type Election = {
   _count: { votes: number }
 }
 
-const statusStyle = (s: string) => {
-  const base = "padding:4px 11px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.04em;white-space:nowrap;"
-  if (s === "ACTIVE") return base + "background:rgba(52,211,153,0.15);color:#6ee7b7;border:1px solid rgba(52,211,153,0.3);"
-  if (s === "DRAFT") return base + "background:rgba(251,191,36,0.15);color:#fcd34d;border:1px solid rgba(251,191,36,0.3);"
-  return base + "background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.15);"
+const statusStyle = (s: string): React.CSSProperties => {
+  const base: React.CSSProperties = { padding: "4px 11px", borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", whiteSpace: "nowrap" }
+  if (s === "ACTIVE") return { ...base, background: "rgba(52,211,153,0.15)", color: "#6ee7b7", border: "1px solid rgba(52,211,153,0.3)" }
+  if (s === "DRAFT") return { ...base, background: "rgba(251,191,36,0.15)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.3)" }
+  return { ...base, background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.15)" }
 }
 
 const statusLabel = (s: string) => s === "ACTIVE" ? "● ACTIVA" : s === "DRAFT" ? "● INSCRIPCIÓN" : "● CERRADA"
@@ -127,7 +128,7 @@ export default function HomePage() {
             >
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                 <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, lineHeight: 1.3, color: "#fff" }}>{e.title}</h3>
-                <span style={statusStyle(e.status) as React.CSSProperties}>{statusLabel(e.status)}</span>
+                <span style={statusStyle(e.status)}>{statusLabel(e.status)}</span>
               </div>
               <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>🗓 {dateRange(e)}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
