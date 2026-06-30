@@ -2,166 +2,140 @@
 
 import { useEffect, useState, use } from "react"
 import { useRouter } from "next/navigation"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Trophy, Medal, Vote, Lock } from "lucide-react"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
 
-type Candidate = {
-  id: string
-  name: string
-  discordTag: string | null
-  description: string | null
-  avatar: string | null
-  voteCount: number
-  percentage: number
-}
+type Member = { id: string; position: number; role: string | null; user: { name: string | null; image: string | null }; memberVoteCount: number }
+type ListResult = { id: string; name: string; listVoteCount: number; members: Member[]; percentage: number }
+type Election = { id: string; title: string; description: string | null; endDate: string; resultsRevealed: boolean }
 
-type Election = {
-  id: string
-  title: string
-  description: string | null
-  endDate: string
-  resultsRevealed: boolean
+const BAR_COLORS = ["linear-gradient(90deg,#fbbf24,#f59e0b)", "linear-gradient(90deg,#6366f1,#8b5cf6)", "linear-gradient(90deg,#94a3b8,#64748b)"]
+const DOT_COLORS = ["#34d399","#60a5fa","#f87171","#a78bfa","#fb923c","#22d3ee"]
+
+function AvatarEl({ image, name, size = 34, gradient = "linear-gradient(135deg,#6366f1,#8b5cf6)" }: { image: string | null; name: string | null; size?: number; gradient?: string }) {
+  const initials = name ? name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2) : "?"
+  if (image) return <img src={image} alt={name ?? ""} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: gradient, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: Math.round(size * 0.38), color: "#fff" }}>
+      {initials}
+    </div>
+  )
 }
 
 export default function ResultsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
-  const [results, setResults] = useState<Candidate[]>([])
+  const [results, setResults] = useState<ListResult[]>([])
   const [election, setElection] = useState<Election | null>(null)
   const [totalVotes, setTotalVotes] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/results/${id}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const d = await r.json()
-          setError(d.error)
-          setLoading(false)
-          return
-        }
-        return r.json()
-      })
-      .then((data) => {
-        if (!data) return
-        setElection(data.election)
-        setResults(data.results)
-        setTotalVotes(data.totalVotes)
-        setLoading(false)
-      })
-      .catch(() => {
-        setError("Error al cargar resultados")
-        setLoading(false)
-      })
+    fetch(`/api/results/${id}`).then(async r => {
+      if (!r.ok) { const d = await r.json(); setError(d.error); setLoading(false); return }
+      return r.json()
+    }).then(data => {
+      if (!data) return
+      setElection(data.election)
+      setResults(data.results ?? [])
+      setTotalVotes(data.totalVotes ?? 0)
+      setLoading(false)
+    }).catch(() => { setError("Error al cargar resultados"); setLoading(false) })
   }, [id])
 
-  if (loading) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-16 space-y-4">
-        <div className="h-8 bg-white/10 rounded animate-pulse" />
-        <div className="h-64 bg-white/10 rounded animate-pulse" />
-      </div>
-    )
-  }
+  if (loading) return (
+    <div style={{ maxWidth: 780, margin: "0 auto", padding: "48px 32px" }}>
+      {[1,2,3].map(i => <div key={i} style={{ height: 100, borderRadius: 16, background: "rgba(255,255,255,0.05)", marginBottom: 16 }} />)}
+    </div>
+  )
 
-  if (error) {
-    return (
-      <div className="max-w-md mx-auto px-4 py-24 text-center">
-        <Lock className="w-12 h-12 text-white/30 mx-auto mb-4" />
-        <h2 className="text-xl font-semibold text-white mb-2">Resultados no disponibles</h2>
-        <p className="text-white/50 mb-6">{error}</p>
-        <Button onClick={() => router.push("/")} variant="outline" className="border-white/20 text-white hover:bg-white/10">
-          Volver al inicio
-        </Button>
-      </div>
-    )
-  }
+  if (error) return (
+    <div style={{ maxWidth: 480, margin: "80px auto", textAlign: "center", padding: "0 32px" }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 8 }}>Resultados no disponibles</h2>
+      <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: 24 }}>{error}</p>
+      <button onClick={() => router.push("/")} style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", fontWeight: 600, fontSize: 14, padding: "11px 22px", borderRadius: 11, cursor: "pointer", fontFamily: "inherit" }}>Volver al inicio</button>
+    </div>
+  )
 
-  const winner = results[0]
-  const rankIcons = [
-    <Trophy key="1" className="w-5 h-5 text-yellow-400" />,
-    <Medal key="2" className="w-5 h-5 text-gray-300" />,
-    <Medal key="3" className="w-5 h-5 text-amber-600" />,
-  ]
+  const participation = totalVotes > 0 ? `${totalVotes} votos emitidos` : "Sin votos"
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12">
-      <div className="mb-8">
-        <Badge variant="outline" className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30 mb-3">
-          Resultados oficiales
-        </Badge>
-        <h1 className="text-3xl font-bold text-white mb-2">{election?.title}</h1>
-        {election?.description && <p className="text-white/60">{election.description}</p>}
-        {election?.endDate && (
-          <p className="text-white/40 text-sm mt-2">
-            Cerrada el {format(new Date(election.endDate), "dd MMM yyyy HH:mm", { locale: es })}
-          </p>
-        )}
-        <div className="flex items-center gap-1 text-white/50 text-sm mt-1">
-          <Vote className="w-4 h-4" />
-          <span>{totalVotes} votos totales</span>
-        </div>
+    <div style={{ maxWidth: 780, margin: "0 auto", padding: "48px 32px 80px" }}>
+      <div onClick={() => router.push("/")} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "rgba(255,255,255,0.5)", cursor: "pointer", marginBottom: 22 }}>
+        ← Volver a elecciones
       </div>
 
-      {winner && (
-        <div className="rounded-2xl bg-gradient-to-br from-yellow-500/20 to-amber-600/10 border border-yellow-500/30 p-6 mb-6 text-center">
-          <Trophy className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
-          <p className="text-yellow-300 text-sm font-medium mb-2">Ganador</p>
-          <Avatar className="h-16 w-16 mx-auto mb-3 ring-4 ring-yellow-500/40">
-            <AvatarImage src={winner.avatar ?? undefined} />
-            <AvatarFallback className="bg-yellow-600 text-white text-xl">
-              {winner.name[0]?.toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <h2 className="text-2xl font-bold text-white">{winner.name}</h2>
-          {winner.discordTag && <p className="text-white/50 text-sm">{winner.discordTag}</p>}
-          <p className="text-yellow-300 font-semibold mt-2">
-            {winner.voteCount} votos ({winner.percentage}%)
-          </p>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {results.map((c, i) => (
-          <div key={c.id} className="rounded-xl bg-white/5 border border-white/10 p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex items-center justify-center w-7 h-7 shrink-0">
-                {rankIcons[i] ?? <span className="text-white/40 font-bold text-sm">#{i + 1}</span>}
-              </div>
-              <Avatar className="h-9 w-9">
-                <AvatarImage src={c.avatar ?? undefined} />
-                <AvatarFallback className="bg-indigo-700 text-white text-sm">
-                  {c.name[0]?.toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <span className="font-semibold text-white">{c.name}</span>
-                {c.discordTag && <span className="text-white/40 text-xs ml-2">{c.discordTag}</span>}
-              </div>
-              <span className="text-white font-bold shrink-0">{c.voteCount} votos</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${i === 0 ? "bg-yellow-400" : "bg-indigo-500"}`}
-                  style={{ width: `${c.percentage}%` }}
-                />
-              </div>
-              <span className="text-white/50 text-sm w-10 text-right">{c.percentage}%</span>
-            </div>
-          </div>
-        ))}
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
+        <div style={{ fontSize: 48, marginBottom: 8 }}>🏆</div>
+        <h1 style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 8px", color: "#fff" }}>Resultados finales</h1>
+        <p style={{ fontSize: 15, color: "rgba(255,255,255,0.55)", margin: 0 }}>{election?.title} · {participation}</p>
       </div>
 
-      <div className="mt-6 text-center">
-        <Button onClick={() => router.push("/")} variant="outline" className="border-white/20 text-white hover:bg-white/10">
-          Volver al inicio
-        </Button>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {results.map((r, i) => {
+          const isWinner = i === 0
+          const dotColor = DOT_COLORS[i % DOT_COLORS.length]
+          const barColor = BAR_COLORS[Math.min(i, 2)]
+          return (
+            <div key={r.id}
+              className={isWinner ? "glow-winner" : ""}
+              style={{
+                position: "relative",
+                background: "rgba(255,255,255,0.05)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+                borderRadius: 16, padding: 22,
+                border: isWinner ? "1px solid rgba(250,204,21,0.5)" : "1px solid rgba(255,255,255,0.1)",
+              }}>
+              {isWinner && (
+                <div style={{ position: "absolute", top: -12, left: 24, display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(135deg,#fbbf24,#f59e0b)", color: "#3a2c00", fontWeight: 700, fontSize: 12, padding: "5px 12px", borderRadius: 999, boxShadow: "0 6px 16px rgba(250,204,21,0.4)" }}>
+                  👑 Ganador
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, paddingTop: isWinner ? 8 : 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center",
+                    fontWeight: 800, fontSize: 17, flexShrink: 0,
+                    background: isWinner ? "linear-gradient(135deg,#fbbf24,#f59e0b)" : "rgba(255,255,255,0.08)",
+                    color: isWinner ? "#3a2c00" : "rgba(255,255,255,0.7)",
+                  }}>#{i + 1}</div>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ width: 11, height: 11, borderRadius: "50%", background: dotColor, display: "inline-block" }} />
+                      {r.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>
+                      {r.members.map(m => m.user.name).join(" · ")}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: isWinner ? "#fbbf24" : "#fff" }}>{r.percentage ?? 0}%</div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{r.listVoteCount} votos</div>
+                </div>
+              </div>
+              <div style={{ height: 10, background: "rgba(255,255,255,0.06)", borderRadius: 999, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${r.percentage ?? 0}%`, borderRadius: 999, background: barColor, transition: "width 1s ease" }} />
+              </div>
+              {r.members.length > 0 && (
+                <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                  {r.members.map((m, mi) => (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 12px" }}>
+                      <AvatarEl image={m.user.image} name={m.user.name} size={28} />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{m.user.name}</div>
+                        {m.role && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{m.role}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ marginTop: 32, textAlign: "center" }}>
+        <button onClick={() => router.push("/")} style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", fontWeight: 600, fontSize: 14, padding: "11px 22px", borderRadius: 11, cursor: "pointer", fontFamily: "inherit" }}>Volver al inicio</button>
       </div>
     </div>
   )

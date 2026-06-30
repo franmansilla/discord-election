@@ -3,11 +3,6 @@
 import { useSession, signIn } from "next-auth/react"
 import { useEffect, useState, use } from "react"
 import { useRouter } from "next/navigation"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Vote, CheckCircle2, Lock, AlertCircle, Calendar, Users, Trophy, UserPlus } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
@@ -39,6 +34,33 @@ type Election = {
   lists: CandidateList[]
 }
 
+const AVATAR_GRADIENTS = [
+  "linear-gradient(135deg,#34d399,#059669)",
+  "linear-gradient(135deg,#60a5fa,#2563eb)",
+  "linear-gradient(135deg,#f87171,#dc2626)",
+  "linear-gradient(135deg,#a78bfa,#7c3aed)",
+  "linear-gradient(135deg,#fb923c,#ea580c)",
+  "linear-gradient(135deg,#22d3ee,#0891b2)",
+]
+const DOT_COLORS = ["#34d399","#60a5fa","#f87171","#a78bfa","#fb923c","#22d3ee"]
+
+function initials(name: string | null) {
+  if (!name) return "?"
+  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
+}
+
+function AvatarEl({ image, name, size = 42, gradient }: { image: string | null; name: string | null; size?: number; gradient?: string }) {
+  if (image) return <img src={image} alt={name ?? ""} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: "50%", flexShrink: 0,
+      background: gradient ?? "linear-gradient(135deg,#6366f1,#8b5cf6)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontWeight: 700, fontSize: Math.round(size * 0.35), color: "#fff",
+    }}>{initials(name)}</div>
+  )
+}
+
 export default function VotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { data: session, status } = useSession()
@@ -46,15 +68,11 @@ export default function VotePage({ params }: { params: Promise<{ id: string }> }
 
   const [election, setElection] = useState<Election | null>(null)
   const [hasVoted, setHasVoted] = useState(false)
-  const [myMembership, setMyMembership] = useState<{ listId: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
-
-  // FULL_LIST mode
+  const [voted, setVoted] = useState(false)
   const [selectedList, setSelectedList] = useState<string | null>(null)
-  // SPLIT mode
   const [selectedPos1, setSelectedPos1] = useState<string | null>(null)
   const [selectedPos2, setSelectedPos2] = useState<string | null>(null)
 
@@ -64,238 +82,247 @@ export default function VotePage({ params }: { params: Promise<{ id: string }> }
       fetch(`/api/elections/${id}/vote`).then(r => r.json()),
       fetch(`/api/elections/${id}/lists`).then(r => r.json()),
     ]).then(([electionData, voteData, listsData]) => {
-      const lists = Array.isArray(listsData) ? listsData : []
-      setElection({ ...electionData, lists })
+      setElection({ ...electionData, lists: Array.isArray(listsData) ? listsData : [] })
       setHasVoted(voteData.hasVoted ?? false)
-      if (session?.user?.id) {
-        const myList = lists.find((l: CandidateList) =>
-          l.members.some((m: Member) => m.user && session.user.id)
-        )
-        if (myList) setMyMembership({ listId: myList.id })
-      }
       setLoading(false)
     }).catch(() => setLoading(false))
-  }, [id, session])
+  }, [id])
 
   async function submitVote() {
     setSubmitting(true)
     setError(null)
-
     let body: Record<string, unknown>
     if (election?.voteMode === "FULL_LIST") {
       if (!selectedList) { setError("Seleccioná una lista"); setSubmitting(false); return }
       body = { listId: selectedList }
     } else {
-      if (!selectedPos1 || !selectedPos2) { setError("Seleccioná un candidato para cada posicion"); setSubmitting(false); return }
+      if (!selectedPos1 || !selectedPos2) { setError("Seleccioná un candidato para cada posición"); setSubmitting(false); return }
       body = { pos1: selectedPos1, pos2: selectedPos2 }
     }
-
     const res = await fetch(`/api/elections/${id}/vote`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     })
-
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? "Error al votar"); setSubmitting(false); return }
-    setSuccess(true)
-    setHasVoted(true)
-    setSubmitting(false)
+    setVoted(true); setHasVoted(true); setSubmitting(false)
   }
 
   if (loading) return (
-    <div className="max-w-2xl mx-auto px-4 py-16 space-y-4">
-      <div className="h-8 bg-white/10 rounded animate-pulse" />
-      <div className="h-48 bg-white/10 rounded animate-pulse" />
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "48px 32px 0" }}>
+      {[1,2,3].map(i => <div key={i} style={{ height: 80, borderRadius: 16, background: "rgba(255,255,255,0.05)", marginBottom: 16 }} />)}
     </div>
   )
-
-  if (!election) return <div className="max-w-2xl mx-auto px-4 py-16 text-center text-white/60">Eleccion no encontrada.</div>
+  if (!election) return <div style={{ textAlign: "center", padding: "80px 32px", color: "rgba(255,255,255,0.4)" }}>Elección no encontrada.</div>
 
   if (status === "unauthenticated") return (
-    <div className="max-w-md mx-auto px-4 py-24 text-center">
-      <Lock className="w-12 h-12 text-indigo-400 mx-auto mb-4" />
-      <h2 className="text-xl font-semibold text-white mb-2">Necesitas iniciar sesion</h2>
-      <p className="text-white/60 mb-6">Conecta tu cuenta de Discord para votar o postularte.</p>
-      <Button onClick={() => signIn("discord")} className="bg-indigo-600 hover:bg-indigo-500">
-        Iniciar sesion con Discord
-      </Button>
+    <div style={{ maxWidth: 480, margin: "80px auto", textAlign: "center", padding: "0 32px" }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 8 }}>Necesitas iniciar sesión</h2>
+      <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: 24 }}>Conecta tu cuenta de Discord para votar o postularte.</p>
+      <button onClick={() => signIn("discord")} style={{
+        background: "linear-gradient(135deg,#6366f1,#7c3aed)", border: "none", color: "#fff",
+        fontWeight: 600, fontSize: 15, padding: "12px 24px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+        boxShadow: "0 8px 24px rgba(99,102,241,0.35)",
+      }}>Iniciar sesión con Discord</button>
     </div>
   )
 
-  if (hasVoted || success) return (
-    <div className="max-w-md mx-auto px-4 py-24 text-center">
-      <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto mb-4" />
-      <h2 className="text-2xl font-bold text-white mb-2">Voto registrado</h2>
-      <p className="text-white/60 mb-6">Tu voto fue contabilizado. Los resultados se revelan cuando el admin lo decida.</p>
-      <Button onClick={() => router.push("/")} variant="outline" className="border-white/20 text-white hover:bg-white/10">Volver al inicio</Button>
+  if (hasVoted || voted) return (
+    <div style={{ maxWidth: 480, margin: "80px auto", textAlign: "center", padding: "0 32px" }}>
+      <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
+      <h2 style={{ fontSize: 26, fontWeight: 800, color: "#fff", marginBottom: 8 }}>Voto registrado</h2>
+      <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: 24 }}>Tu voto fue contabilizado. Los resultados se revelan cuando el admin lo decida.</p>
+      <button onClick={() => router.push("/")} style={{
+        background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff",
+        fontWeight: 600, fontSize: 14, padding: "11px 22px", borderRadius: 11, cursor: "pointer", fontFamily: "inherit",
+      }}>Volver al inicio</button>
     </div>
   )
 
   const completeLists = election.lists.filter(l => l.status === "COMPLETE")
   const openLists = election.lists.filter(l => l.status === "OPEN")
   const canVote = election.status === "ACTIVE"
-  const canRegister = election.status !== "CLOSED" && election.status !== "ACTIVE"
   const allPos1 = election.lists.flatMap(l => l.members.filter(m => m.position === 1))
   const allPos2 = election.lists.flatMap(l => l.members.filter(m => m.position === 2))
+  const canConfirm = election.voteMode === "FULL_LIST" ? !!selectedList : (!!selectedPos1 && !!selectedPos2)
+
+  const confirmBtnStyle: React.CSSProperties = {
+    width: "100%", marginTop: 28, border: "none", fontFamily: "inherit",
+    fontWeight: 700, fontSize: 16, padding: "17px", borderRadius: 14, transition: "all .15s",
+    cursor: canConfirm ? "pointer" : "not-allowed",
+    background: canConfirm ? "linear-gradient(135deg,#6366f1,#7c3aed)" : "rgba(255,255,255,0.06)",
+    color: canConfirm ? "#fff" : "rgba(255,255,255,0.35)",
+    boxShadow: canConfirm ? "0 10px 30px rgba(99,102,241,0.4)" : "none",
+  }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12">
-      <div className="mb-8">
-        <Badge variant="outline" className={`mb-3 ${
-          election.status === "ACTIVE" ? "bg-green-500/20 text-green-300 border-green-500/30" :
-          election.status === "DRAFT" ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" :
-          "bg-gray-500/20 text-gray-300 border-gray-500/30"
-        }`}>
-          {election.status === "ACTIVE" ? "Votacion abierta" : election.status === "DRAFT" ? "Inscripcion abierta" : "Cerrada"}
-        </Badge>
-        <h1 className="text-3xl font-bold text-white mb-2">{election.title}</h1>
-        {election.description && <p className="text-white/60">{election.description}</p>}
-        <div className="flex gap-4 mt-2 text-white/40 text-sm">
-          <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Inicio: {format(new Date(election.startDate), "dd MMM yyyy HH:mm", { locale: es })}</span>
-          <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Cierre: {format(new Date(election.endDate), "dd MMM yyyy HH:mm", { locale: es })}</span>
-        </div>
-        <p className="text-white/40 text-xs mt-1">
-          Modo de voto: <span className="text-indigo-300">{election.voteMode === "FULL_LIST" ? "Lista completa" : "Voto dividido"}</span>
-        </p>
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "48px 32px 80px" }}>
+      <div onClick={() => router.push("/")} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "rgba(255,255,255,0.5)", cursor: "pointer", marginBottom: 22 }}>
+        ← Volver a elecciones
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <span style={{
+          padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, letterSpacing: "0.04em",
+          background: election.status === "ACTIVE" ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.08)",
+          color: election.status === "ACTIVE" ? "#6ee7b7" : "rgba(255,255,255,0.55)",
+          border: election.status === "ACTIVE" ? "1px solid rgba(52,211,153,0.3)" : "1px solid rgba(255,255,255,0.15)",
+        }}>● {election.status === "ACTIVE" ? "ACTIVA" : election.status === "DRAFT" ? "INSCRIPCIÓN" : "CERRADA"}</span>
+        <span style={{ padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: "rgba(99,102,241,0.12)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.3)" }}>
+          {election.voteMode === "FULL_LIST" ? "Lista completa" : "Voto dividido"}
+        </span>
+      </div>
+
+      <h1 style={{ fontSize: 34, fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 10px", color: "#fff" }}>{election.title}</h1>
+      {election.description && <p style={{ fontSize: 15, color: "rgba(255,255,255,0.55)", margin: "0 0 8px", lineHeight: 1.55 }}>{election.description}</p>}
+      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 36 }}>
+        🗓 Cierra el {format(new Date(election.endDate), "d 'de' MMMM · HH:mm", { locale: es })}
       </div>
 
       {error && (
-        <Alert className="mb-4 bg-red-500/10 border-red-500/30 text-red-300">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 12, padding: "12px 16px", color: "#fca5a5", fontSize: 14, marginBottom: 20 }}>
+          ⚠️ {error}
+        </div>
       )}
 
       {/* VOTING UI */}
       {canVote && (
         <>
           {election.voteMode === "FULL_LIST" ? (
-            <div className="space-y-3 mb-6">
-              <p className="text-white/70 font-medium">Seleccioná una lista:</p>
-              {completeLists.length === 0 && (
-                <p className="text-white/40 text-sm py-8 text-center">No hay listas completas para votar.</p>
-              )}
-              {completeLists.map(list => (
-                <button key={list.id} onClick={() => setSelectedList(list.id)}
-                  className={`w-full text-left rounded-xl border p-4 transition-all ${
-                    selectedList === list.id ? "bg-indigo-600/20 border-indigo-500 ring-1 ring-indigo-500" : "bg-white/5 border-white/10 hover:bg-white/10"
-                  }`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-semibold text-white text-lg">{list.name}</span>
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedList === list.id ? "border-indigo-400 bg-indigo-500" : "border-white/30"}`}>
-                      {selectedList === list.id && <div className="w-2 h-2 rounded-full bg-white" />}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {list.members.map(m => (
-                      <div key={m.id} className="flex items-center gap-2">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={m.user.image ?? undefined} />
-                          <AvatarFallback className="bg-indigo-700 text-white text-xs">{m.user.name?.[0]}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-white text-sm font-medium">{m.user.name}</p>
-                          {m.role && <p className="text-white/40 text-xs">{m.role}</p>}
+            <div>
+              <h2 style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 18px" }}>
+                Seleccioná una lista para votar
+              </h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {completeLists.map((list, li) => {
+                  const sel = selectedList === list.id
+                  const dotColor = DOT_COLORS[li % DOT_COLORS.length]
+                  return (
+                    <div key={list.id} onClick={() => setSelectedList(list.id)}
+                      className={sel ? "glow-selected" : ""}
+                      style={{
+                        cursor: "pointer", background: "rgba(255,255,255,0.05)", backdropFilter: "blur(12px)",
+                        WebkitBackdropFilter: "blur(12px)", borderRadius: 16, padding: 20, transition: "all .18s",
+                        border: sel ? "1px solid rgba(99,102,241,0.7)" : "1px solid rgba(255,255,255,0.1)",
+                      }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 12, height: 12, borderRadius: "50%", background: dotColor, boxShadow: `0 0 12px ${dotColor}` }} />
+                          <span style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>{list.name}</span>
                         </div>
+                        <div style={{
+                          width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                          border: sel ? "2px solid #6366f1" : "2px solid rgba(255,255,255,0.25)",
+                          background: sel ? "rgba(99,102,241,0.15)" : "transparent", color: "#6366f1", fontSize: 11,
+                        }}>{sel ? "●" : ""}</div>
                       </div>
-                    ))}
-                  </div>
-                </button>
-              ))}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        {list.members.map((m, mi) => (
+                          <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: 12 }}>
+                            <AvatarEl image={m.user.image} name={m.user.name} size={42} gradient={AVATAR_GRADIENTS[mi]} />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user.name}</div>
+                              {m.role && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{m.role}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+                {completeLists.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "40px 0", color: "rgba(255,255,255,0.35)" }}>No hay listas completas para votar aún.</div>
+                )}
+              </div>
             </div>
           ) : (
-            <div className="space-y-6 mb-6">
-              <p className="text-white/70 font-medium">Voto dividido — elegí un candidato para cada posicion:</p>
-              <div>
-                <p className="text-white/50 text-sm mb-2">Posicion 1:</p>
-                <div className="space-y-2">
-                  {allPos1.map(m => (
-                    <button key={m.id} onClick={() => setSelectedPos1(m.id)}
-                      className={`w-full text-left rounded-lg border p-3 flex items-center gap-3 transition-all ${
-                        selectedPos1 === m.id ? "bg-indigo-600/20 border-indigo-500" : "bg-white/5 border-white/10 hover:bg-white/10"
-                      }`}>
-                      <Avatar className="h-8 w-8"><AvatarImage src={m.user.image ?? undefined} /><AvatarFallback className="bg-indigo-700 text-white text-xs">{m.user.name?.[0]}</AvatarFallback></Avatar>
-                      <div><p className="text-white font-medium">{m.user.name}</p>{m.role && <p className="text-white/40 text-xs">{m.role}</p>}</div>
-                      <div className={`ml-auto w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedPos1 === m.id ? "border-indigo-400 bg-indigo-500" : "border-white/30"}`}>
-                        {selectedPos1 === m.id && <div className="w-2 h-2 rounded-full bg-white" />}
-                      </div>
-                    </button>
-                  ))}
+            <div>
+              <h2 style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 18px" }}>
+                Voto dividido — elegí un candidato para cada posición
+              </h2>
+              {[
+                { label: "Posición 1", members: allPos1, selected: selectedPos1, setSelected: setSelectedPos1 },
+                { label: "Posición 2", members: allPos2, selected: selectedPos2, setSelected: setSelectedPos2 },
+              ].map(({ label, members, selected, setSelected }) => (
+                <div key={label} style={{ marginBottom: 24 }}>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 10, fontWeight: 600 }}>{label}</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {members.map((m, mi) => {
+                      const sel = selected === m.id
+                      return (
+                        <div key={m.id} onClick={() => setSelected(m.id)} style={{
+                          display: "flex", alignItems: "center", gap: 12, borderRadius: 12,
+                          padding: "12px 16px", cursor: "pointer", transition: "all .15s",
+                          background: sel ? "rgba(99,102,241,0.1)" : "rgba(255,255,255,0.04)",
+                          border: sel ? "1px solid rgba(99,102,241,0.6)" : "1px solid rgba(255,255,255,0.1)",
+                        }}>
+                          <AvatarEl image={m.user.image} name={m.user.name} size={38} gradient={AVATAR_GRADIENTS[mi]} />
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{m.user.name}</div>
+                            {m.role && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{m.role}</div>}
+                          </div>
+                          <div style={{
+                            marginLeft: "auto", width: 22, height: 22, borderRadius: "50%",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            border: sel ? "2px solid #6366f1" : "2px solid rgba(255,255,255,0.25)",
+                            background: sel ? "rgba(99,102,241,0.15)" : "transparent", color: "#6366f1", fontSize: 11,
+                          }}>{sel ? "●" : ""}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-              <div>
-                <p className="text-white/50 text-sm mb-2">Posicion 2:</p>
-                <div className="space-y-2">
-                  {allPos2.map(m => (
-                    <button key={m.id} onClick={() => setSelectedPos2(m.id)}
-                      className={`w-full text-left rounded-lg border p-3 flex items-center gap-3 transition-all ${
-                        selectedPos2 === m.id ? "bg-indigo-600/20 border-indigo-500" : "bg-white/5 border-white/10 hover:bg-white/10"
-                      }`}>
-                      <Avatar className="h-8 w-8"><AvatarImage src={m.user.image ?? undefined} /><AvatarFallback className="bg-indigo-700 text-white text-xs">{m.user.name?.[0]}</AvatarFallback></Avatar>
-                      <div><p className="text-white font-medium">{m.user.name}</p>{m.role && <p className="text-white/40 text-xs">{m.role}</p>}</div>
-                      <div className={`ml-auto w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedPos2 === m.id ? "border-indigo-400 bg-indigo-500" : "border-white/30"}`}>
-                        {selectedPos2 === m.id && <div className="w-2 h-2 rounded-full bg-white" />}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
           )}
 
-          <Button onClick={submitVote} disabled={submitting} size="lg" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white h-12">
-            {submitting ? <span className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Enviando...</span>
-              : <span className="flex items-center gap-2"><Vote className="w-5 h-5" />Confirmar voto</span>}
-          </Button>
-          <p className="text-center text-white/30 text-xs mt-3">Accion irreversible. Solo podes votar una vez.</p>
+          <button onClick={submitVote} disabled={submitting || !canConfirm} style={confirmBtnStyle}>
+            {submitting ? "Enviando..." : canConfirm ? "Confirmar voto" : "Seleccioná una lista"}
+          </button>
+          <p style={{ textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.4)", margin: "16px 0 0" }}>
+            🔒 Solo podés votar una vez. Esta acción es irreversible.
+          </p>
         </>
       )}
 
-      {/* REGISTRATION / LISTS VIEW */}
+      {/* INSCRIPTION / VIEW MODE */}
       {!canVote && (
-        <div className="space-y-6">
-          {canRegister && !myMembership && (
-            <div className="rounded-xl bg-indigo-500/10 border border-indigo-500/30 p-5">
-              <h3 className="text-white font-semibold mb-1 flex items-center gap-2"><UserPlus className="w-4 h-4 text-indigo-400" />Postulate como candidato</h3>
-              <p className="text-white/50 text-sm mb-3">Podes crear una nueva lista o unirte a una existente.</p>
-              <div className="flex gap-2 flex-wrap">
-                <Link href={`/elections/${id}/register`}>
-                  <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white">Crear lista</Button>
-                </Link>
+        <div>
+          {election.status !== "CLOSED" && (
+            <div style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 14, padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: "0 0 4px" }}>¿Querés postularte?</p>
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", margin: 0 }}>Creá una lista o unite a una que busca segundo candidato.</p>
               </div>
+              <Link href={`/elections/${id}/register`} style={{ background: "linear-gradient(135deg,#6366f1,#7c3aed)", border: "none", color: "#fff", fontWeight: 600, fontSize: 13, padding: "10px 18px", borderRadius: 10, textDecoration: "none", whiteSpace: "nowrap" }}>Postularme</Link>
             </div>
           )}
-
           {completeLists.length > 0 && (
-            <div>
-              <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Users className="w-4 h-4 text-green-400" />Listas completas ({completeLists.length})</h3>
-              <div className="space-y-3">
-                {completeLists.map(list => <ListCard key={list.id} list={list} electionId={id} myMembership={myMembership} canRegister={canRegister} />)}
+            <div style={{ marginBottom: 28 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>🟢 Listas completas ({completeLists.length})</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {completeLists.map((list, li) => <ListCard key={list.id} list={list} colorIndex={li} />)}
               </div>
             </div>
           )}
-
           {openLists.length > 0 && (
             <div>
-              <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Users className="w-4 h-4 text-yellow-400" />Listas buscando segundo candidato ({openLists.length})</h3>
-              <div className="space-y-3">
-                {openLists.map(list => <ListCard key={list.id} list={list} electionId={id} myMembership={myMembership} canRegister={canRegister} />)}
+              <h3 style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>🟡 Buscando segundo candidato ({openLists.length})</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {openLists.map((list, li) => <ListCard key={list.id} list={list} colorIndex={li + 3} electionId={id} showJoin />)}
               </div>
             </div>
           )}
-
           {election.lists.length === 0 && (
-            <div className="text-center py-12 text-white/30">
-              <Trophy className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>Todavia no hay listas inscriptas.</p>
+            <div style={{ textAlign: "center", padding: "60px 0", color: "rgba(255,255,255,0.3)" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🏆</div>
+              <p>Todavía no hay listas inscriptas.</p>
             </div>
           )}
-
           {election.status === "CLOSED" && election.resultsRevealed && (
-            <Link href={`/results/${id}`}>
-              <Button className="w-full bg-yellow-600 hover:bg-yellow-500 text-white"><Trophy className="w-4 h-4 mr-2" />Ver resultados</Button>
-            </Link>
+            <button onClick={() => router.push(`/results/${id}`)} style={{ width: "100%", marginTop: 24, background: "linear-gradient(135deg,#fbbf24,#f59e0b)", border: "none", color: "#3a2c00", fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 12, cursor: "pointer", fontFamily: "inherit" }}>
+              🏆 Ver resultados finales
+            </button>
           )}
         </div>
       )}
@@ -303,54 +330,32 @@ export default function VotePage({ params }: { params: Promise<{ id: string }> }
   )
 }
 
-function ListCard({ list, electionId, myMembership, canRegister }: {
-  list: CandidateList
-  electionId: string
-  myMembership: { listId: string } | null
-  canRegister: boolean
-}) {
-  const isMyList = myMembership?.listId === list.id
-
+function ListCard({ list, colorIndex, electionId, showJoin }: { list: CandidateList; colorIndex: number; electionId?: string; showJoin?: boolean }) {
+  const dotColor = DOT_COLORS[colorIndex % DOT_COLORS.length]
   return (
-    <div className={`rounded-xl border p-4 ${isMyList ? "bg-indigo-500/10 border-indigo-500/30" : "bg-white/5 border-white/10"}`}>
-      <div className="flex items-center justify-between mb-3">
-        <span className="font-semibold text-white">{list.name}</span>
-        <div className="flex items-center gap-2">
-          {isMyList && <Badge variant="outline" className="text-xs text-indigo-300 border-indigo-500/40">Tu lista</Badge>}
-          <Badge variant="outline" className={`text-xs ${list.status === "COMPLETE" ? "text-green-300 border-green-500/30" : "text-yellow-300 border-yellow-500/30"}`}>
-            {list.status === "COMPLETE" ? "Completa" : "Buscando 2do candidato"}
-          </Badge>
-        </div>
+    <div style={{ background: "rgba(255,255,255,0.05)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: dotColor, boxShadow: `0 0 10px ${dotColor}` }} />
+        <span style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>{list.name}</span>
+        <span style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: list.status === "COMPLETE" ? "rgba(52,211,153,0.15)" : "rgba(251,191,36,0.15)", color: list.status === "COMPLETE" ? "#6ee7b7" : "#fcd34d", border: list.status === "COMPLETE" ? "1px solid rgba(52,211,153,0.3)" : "1px solid rgba(251,191,36,0.3)" }}>
+          {list.status === "COMPLETE" ? "Completa" : "Buscando 2do"}
+        </span>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        {list.members.map(m => (
-          <div key={m.id} className="flex items-center gap-2 bg-white/5 rounded-lg p-2">
-            <Avatar className="h-8 w-8 shrink-0">
-              <AvatarImage src={m.user.image ?? undefined} />
-              <AvatarFallback className="bg-indigo-700 text-white text-xs">{m.user.name?.[0]}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="text-white text-sm font-medium truncate">{m.user.name}</p>
-              {m.role && <p className="text-white/40 text-xs truncate">{m.role}</p>}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {list.members.map((m, mi) => (
+          <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "10px 12px" }}>
+            <AvatarEl image={m.user.image} name={m.user.name} size={36} gradient={AVATAR_GRADIENTS[mi]} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user.name}</div>
+              {m.role && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>{m.role}</div>}
             </div>
           </div>
         ))}
-        {list.status === "OPEN" && (
-          <div className="flex items-center gap-2 bg-white/5 border border-dashed border-white/20 rounded-lg p-2">
-            {canRegister && !myMembership ? (
-              <Link href={`/elections/${electionId}/register?join=${list.id}`} className="flex items-center gap-2 w-full">
-                <div className="h-8 w-8 rounded-full border-2 border-dashed border-white/30 flex items-center justify-center shrink-0">
-                  <UserPlus className="w-3.5 h-3.5 text-white/40" />
-                </div>
-                <span className="text-white/40 text-sm">Unirme</span>
-              </Link>
-            ) : (
-              <div className="flex items-center gap-2 w-full">
-                <div className="h-8 w-8 rounded-full border-2 border-dashed border-white/20 shrink-0" />
-                <span className="text-white/30 text-sm">Vacante</span>
-              </div>
-            )}
-          </div>
+        {showJoin && electionId && list.status === "OPEN" && (
+          <Link href={`/elections/${electionId}/register?join=${list.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", background: "rgba(99,102,241,0.05)", border: "1px dashed rgba(99,102,241,0.3)", borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", border: "2px dashed rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "rgba(255,255,255,0.4)", fontSize: 18 }}>+</div>
+            <span style={{ fontSize: 13, color: "rgba(255,255,255,0.4)" }}>Unirme</span>
+          </Link>
         )}
       </div>
     </div>
